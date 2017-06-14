@@ -61,7 +61,11 @@ module Paperclip
 
       if watermark_path
         command = "composite"
-        params = %W[-gravity #{@position} #{watermark_path} #{tofile(dst)}]
+        position_string = @position
+        if position_string.is_a?(Proc)
+          position_string = position_string.call(@attachment)
+        end
+        params = %W[-gravity #{position_string} #{watermark_path} #{tofile(dst)}]
         params << tofile(dst)
         begin
           success = Paperclip.run(command, params.flatten.compact.collect{|e| "'#{e}'"}.join(" "))
