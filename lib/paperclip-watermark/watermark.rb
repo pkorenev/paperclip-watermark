@@ -54,12 +54,15 @@ module Paperclip
     # Performs the conversion of the +file+ into a watermark. Returns the Tempfile
     # that contains the new image.
     def make
+      puts "Watermark#make"
       first_watermark_path = watermarks.first[:watermark_path]
       src = File.expand_path(@file.path)
       dst = Tempfile.new([@basename, @format].compact.join("."))
       dst.binmode
 
       watermarks.each_with_index do |current_watermark, i|
+        puts "Watermark#make: i: #{i}"
+        puts "Watermark#make: current_watermark: #{current_watermark.inspect}"
         if i > 0
           src = dst
         end
