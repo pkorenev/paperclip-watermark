@@ -10,7 +10,7 @@
 module Paperclip
   class Watermark < Processor
     # Handles watermarking of images that are uploaded.
-    attr_accessor :current_geometry, :target_geometry, :format, :whiny, :convert_options, :watermark_path, :overlay, :position
+    attr_accessor :current_geometry, :target_geometry, :format, :whiny, :convert_options, :watermark_path, :overlay, :position, :watermarks, :watermark
 
     def initialize file, options = {}, attachment = nil
       super
@@ -29,6 +29,14 @@ module Paperclip
       @overlay          = options[:overlay].nil? ? true : false
       @current_format   = File.extname(@file.path)
       @basename         = File.basename(@file.path, @current_format)
+      @watermarks = options[:watermarks] || []
+      if @watermarks.blank?
+        watermark = options[:watermark] || {}
+        [:convert_options, :whiny, :format, :watermark_path, :position, :overlay].each do |k|
+          watermark[k] = instance_variable_get(:"@#{k}") if !watermark.has_key?(k)
+        end
+        @watermarks.push(watermark)
+      end
     end
 
     # TODO: extend watermark
@@ -46,39 +54,47 @@ module Paperclip
     # Performs the conversion of the +file+ into a watermark. Returns the Tempfile
     # that contains the new image.
     def make
+      first_watermark_path = watermarks.first[:watermark_path]
+      src = File.expand_path(@file.path)
       dst = Tempfile.new([@basename, @format].compact.join("."))
       dst.binmode
 
-      command = "convert"
-      params = [fromfile]
-      params += transformation_command
-      params << tofile(dst)
-      begin
-        success = Paperclip.run(command, params.flatten.compact.collect{|e| "'#{e}'"}.join(" "))
-      rescue Paperclip::Errors::CommandNotFoundError
-        raise Paperclip::Errors::CommandNotFoundError, "There was an error resizing and cropping #{@basename}" if @whiny
-      end
-
-      if watermark_path
-        command = "composite"
-        position_string = @position
-        if position_string.is_a?(Proc)
-          position_string = position_string.call(@attachment)
+      watermarks.each_with_index do |current_watermark, i|
+        if i > 0
+          src = dst
         end
-        params = %W[-gravity #{position_string} #{watermark_path} #{tofile(dst)}]
+        command = "convert"
+        params = [src]
+        params += transformation_command
         params << tofile(dst)
+
         begin
           success = Paperclip.run(command, params.flatten.compact.collect{|e| "'#{e}'"}.join(" "))
         rescue Paperclip::Errors::CommandNotFoundError
-          raise Paperclip::Errors::CommandNotFoundError, "There was an error processing the watermark for #{@basename}" if @whiny
+          raise Paperclip::Errors::CommandNotFoundError, "There was an error resizing and cropping #{@basename}" if @whiny
+        end
+
+        if watermark_path
+          command = "composite"
+          position_string = @position
+          if position_string.is_a?(Proc)
+            position_string = position_string.call(@attachment)
+          end
+          params = %W[-gravity #{position_string} #{watermark_path} #{tofile(dst)}]
+          params << tofile(dst)
+          begin
+            success = Paperclip.run(command, params.flatten.compact.collect{|e| "'#{e}'"}.join(" "))
+          rescue Paperclip::Errors::CommandNotFoundError
+            raise Paperclip::Errors::CommandNotFoundError, "There was an error processing the watermark for #{@basename}" if @whiny
+          end
         end
       end
 
       dst
     end
 
-    def fromfile
-      File.expand_path(@file.path)
+    def fromfile(path = @file.path)
+      File.expand_path(path)
     end
 
     def tofile(destination)
